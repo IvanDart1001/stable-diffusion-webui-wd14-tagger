@@ -2,6 +2,7 @@ import os
 import json
 import gradio as gr
 
+from collections import OrderedDict
 from pathlib import Path
 from glob import glob
 from PIL import Image, UnidentifiedImageError
@@ -32,6 +33,7 @@ def on_interrogate(
     batch_output_dir: str,
     batch_output_filename_format: str,
     batch_output_action_on_conflict: str,
+    batch_remove_duplicated_tag: bool,
     batch_output_save_json: bool,
 
     interrogator: str,
@@ -88,13 +90,13 @@ def on_interrogate(
     if batch_input_glob != '':
         # if there is no glob pattern, insert it automatically
         if not batch_input_glob.endswith('*'):
-            if not batch_input_glob.endswith('/'):
-                batch_input_glob += '/'
+            if not batch_input_glob.endswith(os.sep):
+                batch_input_glob += os.sep
             batch_input_glob += '*'
 
         # get root directory of input glob pattern
         base_dir = batch_input_glob.replace('?', '*')
-        base_dir = base_dir.split('/*').pop(0)
+        base_dir = base_dir.split(os.sep + '*').pop(0)
 
         # check the input directory path
         if not os.path.isdir(base_dir):
@@ -152,7 +154,7 @@ def on_interrogate(
             output = []
 
             if output_path.is_file():
-                output.append(output_path.read_text())
+                output.append(output_path.read_text(errors='ignore').strip())
 
                 if batch_output_action_on_conflict == 'ignore':
                     print(f'skipping {path}')
@@ -178,7 +180,20 @@ def on_interrogate(
             else:
                 output.append(plain_tags)
 
-            output_path.write_text(' '.join(output))
+            if batch_remove_duplicated_tag:
+                output_path.write_text(
+                    ', '.join(
+                        OrderedDict.fromkeys(
+                            map(str.strip, ','.join(output).split(','))
+                        )
+                    ),
+                    encoding='utf-8'
+                )
+            else:
+                output_path.write_text(
+                    ', '.join(output),
+                    encoding='utf-8'
+                )
 
             if batch_output_save_json:
                 output_path.with_suffix('.json').write_text(
@@ -259,7 +274,7 @@ def on_ui_tabs():
 
                         batch_output_action_on_conflict = utils.preset.component(
                             gr.Dropdown,
-                            label='Action on exiting caption',
+                            label='Action on existing caption',
                             value='ignore',
                             choices=[
                                 'ignore',
@@ -267,6 +282,11 @@ def on_ui_tabs():
                                 'append',
                                 'prepend'
                             ]
+                        )
+
+                        batch_remove_duplicated_tag = utils.preset.component(
+                            gr.Checkbox,
+                            label='Remove duplicated tag'
                         )
 
                         batch_output_save_json = utils.preset.component(
@@ -435,6 +455,7 @@ def on_ui_tabs():
                     batch_output_dir,
                     batch_output_filename_format,
                     batch_output_action_on_conflict,
+                    batch_remove_duplicated_tag,
                     batch_output_save_json,
 
                     # options
